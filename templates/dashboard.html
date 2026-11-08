@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row between">
+  <div>
+    <h1>멘토링 현황</h1>
+    <div class="row small">
+      <a href="/?view=active" class="btn small {{ 'primary' if view != 'done' }}">진행 중 {{ counts.get('active', 0) }}</a>
+      <a href="/?view=done" class="btn small {{ 'primary' if view == 'done' }}">완료 {{ counts.get('done', 0) }}</a>
+      {% if ch_counts|length > 0 %}<span class="muted">|</span>
+        <a href="/?view={{ view }}" class="chip {{ 'phase' if not ch }}">전체</a>
+        {% for c, n in ch_counts.items() %}<a href="/?view={{ view }}&ch={{ c|urlencode }}" class="chip {{ 'phase' if ch == c }}">{{ c }} {{ n }}</a>{% endfor %}
+      {% endif %}
+    </div>
+  </div>
+  <a class="btn primary" href="/projects/new">+ 새 프로젝트</a>
+</div>
+<div style="height:16px"></div>
+{% if not cards %}
+  <div class="empty">{{ '완료된 프로젝트가 없습니다.' if view == 'done' else '진행 중인 프로젝트가 없습니다. 새 프로젝트를 추가하세요.' }}</div>
+{% endif %}
+<div class="cards">
+{% for c in cards %}{% set p = c.p %}
+  <div class="card">
+    <div class="row between">
+      <h3 style="margin:0"><a href="/projects/{{ p.id }}" style="color:inherit;text-decoration:none">{{ p.code }} · {{ p.brand or '' }} {{ p.service or '' }}</a></h3>
+      {% if p.status == '진행 중' %}<span class="chip phase">Phase {{ p.phase }} · {{ PHASES[p.phase] }}</span>
+      {% else %}<span class="chip {{ 'green' if p.status == '완료' else 'amber' }}">{{ p.status }}</span>{% endif %}
+    </div>
+    <div class="muted small">{{ p.channel or '의뢰 경로 미지정' }} · 멘티 {{ p.mentee or '-' }}</div>
+    <p style="margin:10px 0 0">{{ p.goal or '하려는 일이 아직 정리되지 않았습니다.' }}</p>
+
+    <div class="steps">
+      {% for i in range(1, c.planned + 1) %}
+        {% set s = c.sessions[i-1] if i <= c.sessions|length else None %}
+        <div class="s {{ 'done' if s and s.status == '완료' else ('now' if i == c.done_n + 1 else '') }}">{{ i }}회차{% if s and s.date %}<br>{{ s.date|d }}{% endif %}</div>
+      {% endfor %}
+      <div class="s {{ 'done' if c.report_done else ('now' if c.done_n >= c.planned else '') }}">보고서</div>
+    </div>
+
+    <div class="row between small"><span>체크리스트 {{ c.ck_done }}/{{ c.ck_total }}</span><span class="muted">{{ c.done_n }}/{{ c.planned }}회 · {{ '%g' % c.hours }}/{{ '%g' % p.planned_hours }}시간{% if not p.plan_confirmed %} <span class="chip amber" title="회차·시간 계획이 확인되지 않았습니다">계획 미확인</span>{% endif %}</span></div>
+    <div class="bar"><i style="width:{{ (100 * c.ck_done / c.ck_total) if c.ck_total else 0 }}%"></i></div>
+
+    <h3 style="margin-top:14px">다음 단계</h3>
+    {% for n in c.next_steps %}<div class="next"><b>{{ n.date|d }}</b> {{ n.label }}</div>
+    {% else %}<div class="muted small">예정된 다음 단계가 없습니다.</div>{% endfor %}
+
+    <div class="row small" style="margin-top:12px">
+      {% if c.open_q %}<a href="/projects/{{ p.id }}?tab=questions" class="chip amber">미결 {{ c.open_q }}건</a>{% endif %}
+      {% if c.pending_inputs %}<a href="/projects/{{ p.id }}?tab=sessions" class="chip red">정리 전 기록 {{ c.pending_inputs }}건</a>{% endif %}
+      <a class="btn small" href="/projects/{{ p.id }}?tab=sessions">기록 올리기</a>
+      <a class="btn small" href="/projects/{{ p.id }}">열기</a>
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

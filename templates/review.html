@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}검토 · {{ p.code }}{% endblock %}
+{% block body %}
+<div class="muted small"><a href="/">현황</a> / <a href="/projects/{{ p.id }}?tab=sessions">{{ p.code }} 회차·기록</a> / 검토</div>
+<h1>{{ ('%d회차' % s.no) if s else '회차 밖 기록' }} AI 정리 검토 <span class="muted small">{{ dg.created_at[:16] }}{% if dg.feedback %} · 재정리 요청 반영{% endif %}</span></h1>
+<p class="muted small">이 묶음의 기록 {{ recs|length }}건을 함께 정리했습니다{% for i in recs %}{{ ' · ' if loop.first else ', ' }}{{ i.kind }} {{ i.created_at[5:16] }}{% endfor %}.
+  아래 제안은 체크한 항목만 반영되고, 반영 전에 고칠 수 있습니다.</p>
+
+<div class="card"><h3>요약</h3><p class="pre" style="margin:0">{{ r.summary }}</p></div>
+
+<div class="card">
+  <div class="row between"><h3 style="margin:0">보고서 초안 {% if report %}<span class="muted small">양식3 v{{ report.version }} · {{ report.char_count }}자로 저장됨</span>{% endif %}</h3>
+    {% if report %}<a class="btn small primary" href="/projects/{{ p.id }}/form3/{{ s.no }}?v={{ report.id }}">양식3에서 보기·수정</a>{% endif %}</div>
+  {% if r.report.topic %}<p class="small" style="margin:6px 0 0"><b>주제</b> {{ r.report.topic }}</p>{% endif %}
+  <details {{ 'open' if not report }}><summary>{{ '정리된 내용 보기' if report else '보고서용 정리 내용' }}</summary><p class="pre small">{{ r.report.content }}</p></details>
+  {% if r.report.missing %}<div class="small" style="margin-top:6px"><b>보고서에 부족한 것</b><ul style="margin:4px 0 0">{% for m in r.report.missing %}<li>{{ m }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if not report and s %}<p class="muted small" style="margin-bottom:0">이 경로는 보고 양식이 확인되지 않아 정리 내용만 저장했습니다. 양식이 정해지면 이 내용으로 보고서를 만듭니다.</p>{% endif %}
+  {% set ob = r.observations %}{% if ob.diligence or ob.growth or ob.excellence %}
+  <details><summary>관찰 사실 (관찰의견서용)</summary><div class="small">
+    {% if ob.diligence %}<p><b>성실성</b> {{ ob.diligence }}</p>{% endif %}{% if ob.growth %}<p><b>성장성</b> {{ ob.growth }}</p>{% endif %}{% if ob.excellence %}<p><b>우수성</b> {{ ob.excellence }}</p>{% endif %}</div></details>
+  {% endif %}
+</div>
+
+{% if r.uncertain %}
+<div class="card" style="border-color:var(--amber)">
+  <h3>확인이 필요한 것 <span class="muted small">— AI가 정하지 않은 항목. 필요하면 아래 '새 미결 사항'에 넣으세요</span></h3>
+  <ul class="small" style="margin:0">{% for u in r.uncertain %}<li>{{ u }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/digests/{{ dg.id }}/apply">
+<div class="card">
+  <h3>회차 기본 정보</h3>
+  {% for m in meta %}
+    <div class="small" style="margin-top:6px"><b>{{ m.no }}회차</b>{% if not m.exists %} <span class="chip amber">새 회차</span>{% endif %}</div>
+    {% for k, label, new, old in m.changes %}
+      <div class="prop"><input type="checkbox" name="m_{{ m.no }}_{{ k }}" value="1" checked><div class="t">
+        <label style="margin-top:0">{{ label }}{% if old %} (지금: {{ old }}){% endif %}</label><input type="text" name="mv_{{ m.no }}_{{ k }}" value="{{ new }}"></div></div>
+    {% endfor %}
+    {% if m.held %}<div class="prop"><input type="checkbox" name="m_{{ m.no }}_held" value="1"><div class="t">{{ m.no }}회차를 '완료'로 표시 <span class="muted small">(진행됐다는 근거가 입력에 있음 — 확인 후 체크)</span></div></div>{% endif %}
+  {% else %}<div class="muted small">바꿀 회차 정보가 없습니다.</div>{% endfor %}
+</div>
+
+<div class="card">
+  <h3>체크리스트 완료 처리</h3>
+  {% for d, c in done_items %}
+    <div class="prop"><input type="checkbox" name="done_{{ c.id }}" value="1" checked><div class="t">{{ c.text }}<div class="muted small">근거: {{ d.evidence }}</div></div></div>
+  {% else %}<div class="muted small">완료로 볼 근거가 있는 항목이 없습니다.</div>{% endfor %}
+</div>
+
+<div class="card">
+  <h3>새 체크리스트 항목</h3>
+  {% for c in r.checklist_new %}
+    <div class="prop"><input type="checkbox" name="nck_{{ loop.index0 }}" value="1" checked><div class="t">
+      <div class="grid3"><div style="grid-column:span 2"><input type="text" name="nck_text_{{ loop.index0 }}" value="{{ c.text }}"></div>
+        <div class="row"><select name="nck_req_{{ loop.index0 }}" style="width:48%"><option value="">공통</option>{% for q in requests %}<option {{ 'selected' if q.code == c.request_code }}>{{ q.code }}</option>{% endfor %}</select>
+          <input type="date" name="nck_due_{{ loop.index0 }}" value="{{ c.due if c.due|length == 10 else '' }}" style="width:48%"></div></div>
+      {% if c.reason %}<div class="muted small">{{ c.reason }}</div>{% endif %}</div></div>
+  {% else %}<div class="muted small">제안 없음</div>{% endfor %}
+</div>
+
+<div class="card">
+  <h3>미결 사항</h3>
+  {% for q, orig in resolved %}
+    <div class="prop"><input type="checkbox" name="rq_{{ q.code }}" value="1"><div class="t"><b>{{ q.code }}</b> {{ orig.text }} → 결정으로 닫기
+      <div class="grid2"><input type="text" name="rq_dec_{{ q.code }}" value="{{ q.decision }}"><input type="text" name="rq_basis_{{ q.code }}" value="{{ q.basis }}" placeholder="근거"></div></div></div>
+  {% endfor %}
+  {% for q in r.questions_new %}
+    <div class="prop"><input type="checkbox" name="nq_{{ loop.index0 }}" value="1" checked><div class="t"><span class="muted small">새 미결</span>
+      <input type="text" name="nq_text_{{ loop.index0 }}" value="{{ q.text }}">
+      <div class="grid3"><input type="text" name="nq_owner_{{ loop.index0 }}" value="{{ q.owner }}" placeholder="확인 주체"><input type="text" name="nq_due_{{ loop.index0 }}" value="{{ q.due }}" placeholder="기한">
+        <select name="nq_pri_{{ loop.index0 }}">{% for x in PRIORITIES %}<option {{ 'selected' if x == q.priority }}>{{ x }}</option>{% endfor %}</select></div></div></div>
+  {% endfor %}
+  {% if not resolved and not r.questions_new %}<div class="muted small">제안 없음</div>{% endif %}
+  <p class="muted small" style="margin-bottom:0">결정으로 닫는 항목은 기본 해제 상태입니다. 직접 확인한 뒤 체크하세요.</p>
+</div>
+
+{% if r.requests_new or r.milestones_new or r.research_note %}
+<div class="card">
+  <h3>기타</h3>
+  {% for q in r.requests_new %}
+    <div class="prop"><input type="checkbox" name="nr_{{ loop.index0 }}" value="1"><div class="t"><span class="muted small">새 멘티 요청</span>
+      <div class="grid2"><input type="text" name="nr_text_{{ loop.index0 }}" value="{{ q.text }}"><input type="text" name="nr_src_{{ loop.index0 }}" value="{{ q.source }}" placeholder="출처"></div></div></div>
+  {% endfor %}
+  {% for m in r.milestones_new %}
+    <div class="prop"><input type="checkbox" name="nm_{{ loop.index0 }}" value="1" checked><div class="t"><span class="muted small">새 일정</span>
+      <div class="grid2"><input type="date" name="nm_date_{{ loop.index0 }}" value="{{ m.date if m.date|length == 10 else '' }}"><input type="text" name="nm_label_{{ loop.index0 }}" value="{{ m.label }}"></div></div></div>
+  {% endfor %}
+  {% if r.research_note %}
+    <div class="prop"><input type="checkbox" name="research" value="1" checked><div class="t"><span class="muted small">자료조사 메모에 추가</span><textarea name="research_text" style="min-height:120px">{{ r.research_note }}</textarea></div></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<p><button class="btn primary">선택한 항목 반영</button> <a class="btn" href="/projects/{{ p.id }}?tab=sessions">나중에</a></p>
+</form>
+{% endblock %}

@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+*.db
+NVIDIA Corporation/
+*.log
+mentor-data-*.zip

@@ -1,0 +1,35 @@
+{% macro header_table(rows) %}
+<table>{% for k, v in rows %}<tr><th style="width:130px">{{ k }}</th><td>{% if v %}{{ v }}{% else %}<span class="chip amber">확인 필요</span>{% endif %}</td></tr>{% endfor %}</table>
+{% endmacro %}
+
+{% macro warn_box(warns, missing) %}
+{% if warns or missing %}
+<div class="card" style="border-color:var(--amber)">
+  {% if warns %}<h3>점검</h3><ul class="small" style="margin:0 0 8px">{% for w in warns %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  {% if missing %}<h3>AI가 부족하다고 본 것 <span class="muted small">— 입력에 더 기록하거나 피드백으로 알려 주세요</span></h3>
+  <ul class="small" style="margin:0">{% for m in missing %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro gen_box(action, cur, anthropic_ok, label) %}
+<form class="card gen" method="post" action="{{ action }}">
+  <h3>{{ '다시 생성' if cur else '초안 생성' }}</h3>
+  {% if cur %}<label>피드백 (비우면 처음부터 새로 생성, 적으면 지금 초안에 피드백을 반영해 고쳐 씀)</label>
+  <textarea name="feedback" placeholder="예: 파일럿 설계 논의를 더 구체적으로, 2문단의 일반론은 빼 주세요"></textarea>
+  <input type="hidden" name="base_id" value="{{ cur.id }}">{% endif %}
+  <p style="margin-bottom:0"><button class="btn primary" {{ 'disabled' if not anthropic_ok }}>{{ label }}</button>
+    {% if not anthropic_ok %}<span class="muted small">이 PC에서 Claude Code를 찾지 못했습니다</span>{% else %}<span class="muted small">1~3분 걸립니다 (Claude Code 계정 사용량 사용)</span>{% endif %}</p>
+</form>
+<script>document.querySelectorAll('form.gen').forEach(f => f.addEventListener('submit', () => { const b = f.querySelector('button'); b.disabled = true; b.textContent = '생성 중… 창을 닫지 마세요'; }));</script>
+{% endmacro %}
+
+{% macro versions_list(versions, cur, base) %}
+{% if versions %}
+<div class="card"><h3>버전</h3>
+<table>{% for r in versions %}<tr class="{{ 'muted' if cur and r.id != cur.id }}"><td>v{{ r.version }}</td><td class="small">{{ r.created_at[5:16] }}</td><td class="small">{{ r.origin }}</td>
+  <td class="small">{{ r.char_count }}자</td><td class="small">{{ (r.feedback or '')[:60] }}</td>
+  <td>{% if cur and r.id == cur.id %}<b class="small">보는 중</b>{% else %}<a class="small" href="{{ base }}?v={{ r.id }}">보기</a>{% endif %}</td></tr>{% endfor %}</table>
+</div>
+{% endif %}
+{% endmacro %}

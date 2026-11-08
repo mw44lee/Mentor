@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}업무 프로세스{% endblock %}
+{% block body %}
+<div class="row between">
+  <div><h1>업무 프로세스</h1><div class="muted small">문서 수정일 {{ updated }} · 신규 의뢰가 들어오면 위에서부터 따라가세요</div></div>
+  <div class="row"><a class="btn" href="/process/download.md">md 다운로드</a><a class="btn primary" href="/process/download.docx">docx 다운로드</a></div>
+</div>
+<div class="proc">
+  <nav class="card proc-toc"><b class="small">목차</b>{{ toc|safe }}</nav>
+  <article class="card proc-body">{{ html|safe }}</article>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_report_bits.html" import header_table, warn_box, gen_box, versions_list %}
+{% block title %}양식4 · {{ p.code }}{% endblock %}
+{% block body %}
+<div class="muted small"><a href="/">현황</a> / <a href="/projects/{{ p.id }}?tab=reports">{{ p.code }} 보고서</a> / 양식4</div>
+<h1>양식4 · 책임멘토 관찰 의견서</h1>
+<p class="muted small">모든 회차의 입력과 양식3 초안을 근거로 성실성·성장성·우수성을 씁니다. 평가위원회 참고자료 · 1페이지 이내.</p>
+<div class="card">{{ header_table(header) }}</div>
+
+{% if not cur %}{{ warn_box(warns, []) }}{% endif %}
+{% if cur %}
+{{ warn_box(warns, meta.get('missing')) }}
+<form class="card" method="post" action="/reports/{{ cur.id }}/save">
+  <div class="row between"><h3>관찰 의견 <span class="muted small">v{{ cur.version }} · {{ cur.origin }}</span></h3>
+    <span class="small">합계 <b id="tot" class="{{ 'd-urgent' if total > MAX }}">{{ total }}</b>자 / 1페이지 약 {{ MAX }}자</span></div>
+  {% for k, label, hint in [('diligence','성실성','멘토링 참여 적극성, 창업 의지, 창업준비 상황'),('growth','성장성','피드백 수용 정도, 사업계획의 구체성, 발전 가능성'),('excellence','우수성','아이디어 고도화 과정의 우수성, 타 아이디어 대비 우수성')] %}
+    <label>{{ label }} <span class="muted">— {{ hint }}</span> · <span class="n">{{ (body.get(k) or '')|length }}</span>자</label>
+    <textarea name="{{ k }}" class="sec" style="min-height:150px">{{ body.get(k, '') }}</textarea>
+  {% endfor %}
+  <div class="row" style="margin-top:10px">
+    <button class="btn">수정 저장 (새 버전)</button>
+    <button type="button" class="btn" id="copy">전체 복사</button>
+    <a class="btn primary" href="/reports/{{ cur.id }}/docx">docx 다운로드</a>
+  </div>
+</form>
+<script>
+  const secs = [...document.querySelectorAll('textarea.sec')], tot = document.getElementById('tot');
+  const upd = () => { let t = 0; secs.forEach(s => { s.previousElementSibling.querySelector('.n').textContent = s.value.length; t += s.value.length; });
+    tot.textContent = t; tot.className = t > {{ MAX }} ? 'd-urgent' : ''; };
+  secs.forEach(s => s.addEventListener('input', upd));
+  document.getElementById('copy').addEventListener('click', async () => {
+    const names = ['성실성','성장성','우수성']; await navigator.clipboard.writeText(secs.map((s, i) => `[${names[i]}]\n${s.value}`).join('\n\n'));
+    document.getElementById('copy').textContent = '복사됨'; });
+</script>
+{% endif %}
+
+{{ gen_box('/projects/%d/form4/generate' % p.id, cur, anthropic_ok, '피드백 반영해 다시 생성' if cur else '양식4 초안 생성') }}
+{{ versions_list(versions, cur, '/projects/%d/form4' % p.id) }}
+{% endblock %}

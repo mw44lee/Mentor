@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_report_bits.html" import header_table, warn_box, gen_box, versions_list %}
+{% block title %}양식3 {{ s.no }}회차 · {{ p.code }}{% endblock %}
+{% block body %}
+<div class="muted small"><a href="/">현황</a> / <a href="/projects/{{ p.id }}?tab=reports">{{ p.code }} 보고서</a> / 양식3 {{ s.no }}회차</div>
+<h1>양식3 · {{ s.no }}회차 멘토링 보고서</h1>
+<p class="muted small">입력 {{ n_inputs }}건 전체에서 {{ s.no }}회차 내용을 뽑아 씁니다. 머리 항목은 프로젝트·회차 탭의 값으로 채워지며, 비어 있으면 거기서 고치세요.</p>
+
+<div class="card">{{ header_table(header + [('멘토링 주제', meta.get('topic'))]) }}
+  <p class="small muted" style="margin-bottom:0">사진: {{ s.photo1 or '시작 사진 없음' }} / {{ s.photo2 or '종료 사진 없음' }} — <a href="/projects/{{ p.id }}?tab=sessions#s{{ s.id }}">회차 탭에서 지정</a></p></div>
+
+{% if cur %}
+{{ warn_box(warns, meta.get('missing')) }}
+<form class="card" method="post" action="/reports/{{ cur.id }}/save">
+  <div class="row between"><h3>멘토링 내용 <span class="muted small">v{{ cur.version }} · {{ cur.origin }}</span></h3>
+    <span class="small"><b id="cnt" class="{{ 'd-urgent' if counts[0] < MIN }}">{{ counts[0] }}</b>자 (공백 제외 <span id="cnt2">{{ counts[1] }}</span>자) / 최소 {{ MIN }}자</span></div>
+  <label>멘토링 주제</label><input type="text" name="topic" value="{{ meta.get('topic', '') }}">
+  <label>멘토링 내용</label><textarea name="body" id="body" style="min-height:420px">{{ cur.body }}</textarea>
+  <div class="row" style="margin-top:10px">
+    <button class="btn">수정 저장 (새 버전)</button>
+    <button type="button" class="btn" id="copy">내용 복사</button>
+    <a class="btn primary" href="/reports/{{ cur.id }}/docx">docx 다운로드</a>
+  </div>
+</form>
+<script>
+  const b = document.getElementById('body'), c = document.getElementById('cnt'), c2 = document.getElementById('cnt2');
+  b.addEventListener('input', () => { c.textContent = b.value.length; c2.textContent = b.value.replace(/\s/g, '').length; c.className = b.value.length < {{ MIN }} ? 'd-urgent' : ''; });
+  document.getElementById('copy').addEventListener('click', async () => { await navigator.clipboard.writeText(b.value); document.getElementById('copy').textContent = '복사됨'; });
+</script>
+{% else %}
+{{ warn_box(warns, []) }}
+{% endif %}
+
+{{ gen_box('/projects/%d/form3/%d/generate' % (p.id, s.no), cur, anthropic_ok, '피드백 반영해 다시 생성' if cur else '양식3 초안 생성') }}
+{{ versions_list(versions, cur, '/projects/%d/form3/%d' % (p.id, s.no)) }}
+{% endblock %}

@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}{{ p.code }} {{ p.service or '' }}{% endblock %}
+{% block body %}
+<div class="row between">
+  <div>
+    <div class="muted small"><a href="/">현황</a> / {{ p.code }}</div>
+    <h1>{{ p.code }} · {{ p.brand or '' }} {{ p.service or '' }}</h1>
+    <div class="row small"><span class="chip phase">Phase {{ p.phase }} · {{ PHASES[p.phase] }}</span>
+      <span class="chip {{ 'green' if p.status == '완료' else ('amber' if p.status == '보류' else '') }}">{{ p.status }}</span>
+      <span class="chip">{{ p.channel or '의뢰 경로 미지정' }}</span>
+      <span class="muted">멘티 {{ p.mentee or '-' }}</span></div>
+  </div>
+  <form class="inline" method="post" action="/projects/{{ p.id }}/status"
+        onsubmit="return confirm('{{ '프로젝트를 다시 진행 중으로 돌릴까요?' if p.status == '완료' else '이 프로젝트를 완료로 표시할까요?' }}')">
+    <input type="hidden" name="status" value="{{ '진행 중' if p.status == '완료' else '완료' }}">
+    <button class="btn {{ '' if p.status == '완료' else 'primary' }}">{{ '진행 중으로 되돌리기' if p.status == '완료' else '완료 처리' }}</button>
+  </form>
+</div>
+
+<div class="tabs">{% for k, label in tabs %}<a href="?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ label }}</a>{% endfor %}</div>
+
+{# ================= 개요 ================= #}
+{% if tab == 'overview' %}
+  {% if edit %}
+  <form class="card" method="post" action="/projects/{{ p.id }}/edit">
+    <div class="grid3">
+      <div><label>브랜드</label><input type="text" name="brand" value="{{ p.brand or '' }}"></div>
+      <div><label>서비스/아이템</label><input type="text" name="service" value="{{ p.service or '' }}"></div>
+      <div><label>멘티</label><input type="text" name="mentee" value="{{ p.mentee or '' }}"></div>
+      <div><label>진출자 닉네임</label><input type="text" name="mentee_nickname" value="{{ p.mentee_nickname or '' }}"></div>
+      <div><label>운영기관</label><input type="text" name="org" value="{{ p.org or '' }}"></div>
+      <div><label>의뢰 경로</label><select name="channel"><option value="">미지정</option>{% for c in CHANNELS %}<option {{ 'selected' if p.channel == c }}>{{ c }}</option>{% endfor %}</select></div>
+      <div><label>Phase</label><select name="phase">{% for k, v in PHASES.items() %}<option value="{{ k }}" {{ 'selected' if p.phase == k }}>{{ k }}. {{ v }}</option>{% endfor %}</select></div>
+      <div><label>상태</label><select name="status">{% for s in PROJECT_STATUSES %}<option {{ 'selected' if p.status == s }}>{{ s }}</option>{% endfor %}</select></div>
+      <div><label>예정 회차 / 총 시간</label><div class="row"><input type="number" name="planned_sessions" value="{{ p.planned_sessions }}" style="width:80px"><input type="number" step="0.5" name="planned_hours" value="{{ p.planned_hours }}" style="width:90px"></div>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="plan_confirmed" value="1" {{ 'checked' if p.plan_confirmed }}> 회차·시간 계획 확인됨</label></div>
+      <div><label>시작일 / 종료 목표일</label><div class="row"><input type="date" name="start_date" value="{{ p.start_date or '' }}"><input type="date" name="end_date" value="{{ p.end_date or '' }}"></div></div>
+    </div>
+    <label>멘티가 하고자 하는 일</label><textarea name="goal">{{ p.goal or '' }}</textarea>
+    <label>핵심 아이템 설명</label><textarea name="item">{{ p.item or '' }}</textarea>
+    <label>핵심 질문</label><textarea name="critical_question">{{ p.critical_question or '' }}</textarea>
+    <label>메모 (멘토 전용)</label><textarea name="notes">{{ p.notes or '' }}</textarea>
+    <p><button class="btn primary">저장</button> <a class="btn" href="?tab=overview">취소</a></p>
+  </form>
+  {% else %}
+  <div class="card">
+    <div class="row between"><h3>멘티가 하고자 하는 일</h3><a class="btn small" href="?tab=overview&edit=1">정보 수정</a></div>
+    <p class="pre" style="margin-top:0">{{ p.goal or '아직 정리되지 않았습니다.' }}</p>
+    {% if p.item %}<h3>핵심 아이템</h3><p class="pre" style="margin-top:0">{{ p.item }}</p>{% endif %}
+    {% if p.critical_question %}<h3>핵심 질문</h3><p class="pre" style="margin-top:0">{{ p.critical_question }}</p>{% endif %}
+    <div class="grid3 small muted">
+      <div>운영기관: {{ p.org or '미확인' }}</div><div>진출자 닉네임: {{ p.mentee_nickname or '미확인' }}</div>
+      <div>계획: {{ p.planned_sessions }}회 · {{ '%g' % p.planned_hours }}시간{% if not p.plan_confirmed %} <span class="chip amber">미확인</span>{% endif %}</div>
+    </div>
+    {% if p.notes %}<h3 style="margin-top:12px">멘토 메모</h3><p class="pre small" style="margin-top:0">{{ p.notes }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h3>멘티 요청 사항</h3>
+    {% for r in requests %}
+      {% set items = checklist|selectattr('request_id', 'equalto', r.id)|list %}
+      {% set d = items|selectattr('done')|list|length %}
+      <div class="ck"><span class="chip">{{ r.code }}</span><div class="t">{{ r.text }}{% if r.source %}<div class="muted small">출처: {{ r.source }}</div>{% endif %}</div>
+        <a class="small" href="?tab=checklist#r{{ r.id }}">체크리스트 {{ d }}/{{ items|length }}</a></div>
+    {% else %}<div class="empty">아직 등록된 요청이 없습니다.</div>{% endfor %}
+    <details><summary>요청 추가</summary>
+      <form method="post" action="/projects/{{ p.id }}/requests" class="grid2">
+        <div><label>요청 내용</label><input type="text" name="text" required></div>
+        <div><label>출처 (언제·어디서)</label><input type="text" name="source"></div>
+        <p><button class="btn primary small">추가</button></p>
+      </form></details>
+  </div>
+
+  <div class="card">
+    <h3>일정</h3>
+    <table>{% for m in milestones %}
+      <tr><td style="width:110px">{{ m.date|d }}</td><td class="{{ 'muted' if m.done }}">{{ m.label }}</td>
+      <td style="width:90px"><form class="inline" method="post" action="/milestones/{{ m.id }}/toggle"><button class="btn small">{{ '되돌리기' if m.done else '완료' }}</button></form></td></tr>
+    {% else %}<tr><td class="muted">등록된 일정이 없습니다.</td></tr>{% endfor %}</table>
+    <details><summary>일정 추가</summary>
+      <form method="post" action="/projects/{{ p.id }}/milestones" class="grid2">
+        <div><label>날짜</label><input type="date" name="date" required></div>
+        <div><label>내용</label><input type="text" name="label" required></div>
+        <p><button class="btn primary small">추가</button></p>
+      </form></details>
+  </div>
+
+  <div class="card">
+    <h3>쟁점·가설 메모 (멘토 전용)</h3>
+    {% for m in memos %}
+      <details><summary>{{ m.title }}</summary>
+        <form method="post" action="/memos/{{ m.id }}/edit">
+          <input type="text" name="title" value="{{ m.title }}">
+          <textarea name="body" style="min-height:180px">{{ m.body or '' }}</textarea>
+          <p><button class="btn small">저장</button> <span class="muted small">수정 {{ m.updated_at }}</span></p>
+        </form></details>
+    {% else %}<div class="empty">메모가 없습니다.</div>{% endfor %}
+    <details><summary>메모 추가</summary>
+      <form method="post" action="/projects/{{ p.id }}/memos">
+        <label>제목</label><input type="text" name="title" required>
+        <label>내용</label><textarea name="body"></textarea>
+        <p><button class="btn primary small">추가</button></p>
+      </form></details>
+  </div>
+
+{# ================= 체크리스트 ================= #}
+{% elif tab == 'checklist' %}
+  {% set pending = checklist|rejectattr('approved')|list %}
+  {% if pending %}
+  <div class="card">
+    <h3>제안 — 승인 대기 {{ pending|length }}건 <span class="muted small">(AI 정리·숙제 후보 등. 승인해야 진행 관리에 들어갑니다)</span></h3>
+    {% for c in pending %}
+      <div class="ck"><div class="t">{{ c.text }}{% if c.rcode %} <span class="chip">{{ c.rcode }}</span>{% endif %}{% if c.due %} <span class="muted small">~{{ c.due|d }}</span>{% endif %}</div>
+        <form class="inline" method="post" action="/checklist/{{ c.id }}/approve"><input type="hidden" name="approve" value="1"><button class="btn small primary">승인</button></form>
+        <form class="inline" method="post" action="/checklist/{{ c.id }}/approve"><input type="hidden" name="approve" value="0"><button class="btn small">버리기</button></form></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% set groups = [] %}
+  {% for r in requests %}{% set _ = groups.append((r, checklist|selectattr('request_id', 'equalto', r.id)|selectattr('approved')|list)) %}{% endfor %}
+  {% set _ = groups.append((None, checklist|selectattr('request_id', 'none')|selectattr('approved')|list)) %}
+  {% for r, items in groups %}{% if r or items %}
+  <div class="card" id="{{ 'r%d' % r.id if r else 'etc' }}">
+    <div class="row between"><h3>{% if r %}<span class="chip">{{ r.code }}</span> {{ r.text }}{% else %}공통·진행 관리{% endif %}</h3>
+      <span class="muted small">{{ items|selectattr('done')|list|length }}/{{ items|length }}</span></div>
+    {% for c in items %}
+      <div class="ck {{ 'done' if c.done }}">
+        <form class="inline" method="post" action="/checklist/{{ c.id }}/toggle"><button class="ckbox {{ 'on' if c.done }}" title="완료 표시">{{ '✓' if c.done }}</button></form>
+        <div class="t">{{ c.text }}<div class="muted small">{% if c.due %}마감 {{ c.due|d }} · {% endif %}{{ c.origin }}{% if c.done_at %} · 완료 {{ c.done_at[:10] }}{% endif %}</div></div>
+        <form class="inline" method="post" action="/checklist/{{ c.id }}/delete" onsubmit="return confirm('이 항목을 지울까요?')"><button class="btn link small">삭제</button></form>
+      </div>
+    {% else %}<div class="muted small">항목이 없습니다.</div>{% endfor %}
+  </div>
+  {% endif %}{% endfor %}
+
+  <div class="card">
+    <h3>항목 추가</h3>
+    <form method="post" action="/projects/{{ p.id }}/checklist" class="grid3">
+      <div><label>내용</label><input type="text" name="text" required></div>
+      <div><label>연결할 요청</label><select name="request_id"><option value="">공통·진행 관리</option>{% for r in requests %}<option value="{{ r.id }}">{{ r.code }} {{ r.text[:30] }}</option>{% endfor %}</select></div>
+      <div><label>마감</label><input type="date" name="due"></div>
+      <p><button class="btn primary small">추가</button></p>
+    </form>
+  </div>
+
+{# ================= 회차·기록 (회차마다 그 회차의 기록을 모아 둠) ================= #}
+{% elif tab == 'sessions' %}
+  {% macro input_card(i) %}
+  <div class="rec" id="i{{ i.id }}">
+    <div class="row between">
+      <div class="row small"><span class="chip">{{ i.kind }}</span><span class="muted">{{ i.created_at[:16] }}</span></div>
+      <div class="row small">
+        <span class="chip {{ 'green' if i.state == '반영됨' else ('amber' if i.state in ('정리됨','받아쓰는 중') else 'red') }}">{{ {'대기': '정리 전', '정리됨': '정리됨', '반영됨': '반영됨'}.get(i.state, i.state) }}</span>
+        <form class="inline" method="post" action="/inputs/{{ i.id }}/delete" onsubmit="return confirm('이 기록을 삭제할까요? 첨부 파일은 data\\uploads\\_deleted로 옮겨집니다.')"><button class="btn link small">삭제</button></form>
+      </div>
+    </div>
+    {% if i.text %}<details {{ 'open' if i.state == '대기' }}><summary>메모</summary><p class="pre small">{{ i.text }}</p></details>{% endif %}
+    {% for f in input_files.get(i.id, []) %}
+      <div class="ck small"><span class="chip">{{ {'image':'사진','audio':'녹음','pdf':'PDF','docx':'Word','xlsx':'Excel','text':'텍스트'}.get(f.media, '파일') }}</span>
+        <div class="t"><a href="/files/{{ f.id }}">{{ f.filename }}</a> <span class="muted">{{ '%.1f' % ((f.size or 0) / 1048576) }}MB</span>
+          {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}
+          {% if f.extracted_text %}<details><summary>{{ '전사본' if f.media == 'audio' else '추출된 내용' }} 보기</summary><p class="pre">{{ f.extracted_text[:5000] }}{% if f.extracted_text|length > 5000 %}…(이하 생략, AI에는 전체 전달){% endif %}</p></details>{% endif %}</div>
+        {% if f.media == 'audio' and i.state != '받아쓰는 중' and openai_ok %}<form class="inline" method="post" action="/input_files/{{ f.id }}/retranscribe"><button class="btn small">다시 받아쓰기</button></form>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endmacro %}
+
+  {% macro digest_box(key, recs, label) %}{% set dgi = digests.get(key) %}{% set fresh = recs|selectattr('state', 'equalto', '대기')|list %}
+  <div class="digest-box">
+    <div class="row between">
+      <div class="small"><b>AI 정리</b>
+        {% if dgi %}<span class="muted">· {{ dgi.row.created_at[5:16] }} · 기록 {{ (dgi.row.input_ids|fromjson)|length }}건 기준</span>
+          <span class="chip {{ 'green' if dgi.row.state == '반영됨' else 'amber' }}">{{ '반영됨' if dgi.row.state == '반영됨' else '검토 대기' }}</span>
+          {% if fresh %}<span class="chip red">정리 후 새 기록 {{ fresh|length }}건 — 재정리 필요</span>{% endif %}
+        {% else %}<span class="muted">· 아직 정리하지 않음</span>{% endif %}</div>
+      {% if dgi %}<a class="btn small {{ 'primary' if dgi.row.state != '반영됨' }}" href="/digests/{{ dgi.row.id }}/review">{{ '검토하고 반영' if dgi.row.state != '반영됨' else '정리 결과 보기' }}</a>{% endif %}
+    </div>
+    {% if dgi %}<p class="small" style="margin:6px 0 0">{{ dgi.r.summary }}</p>{% endif %}
+    {% if recs %}
+    <form class="digest" method="post" action="/projects/{{ p.id }}/digest/{{ key }}" style="margin-top:8px">
+      {% if dgi %}<details><summary>재정리 요청 사항 (선택)</summary><textarea name="feedback" placeholder="예: 파일럿 설계 논의를 더 자세히, 멘토 의견을 분명하게"></textarea></details>{% endif %}
+      <button class="btn small {{ 'primary' if not dgi or fresh }}" {{ 'disabled' if not anthropic_ok }}>{{ 'AI 재정리' if dgi else 'AI 정리' }} ({{ label }} 기록 {{ recs|length }}건 전체)</button>
+      <span class="muted small">체크리스트·미결 제안{{ ' + 양식3 초안' if key and 'form3' in CHANNEL_FORMS.get(p.channel, []) else ' + 보고서용 정리' }} · 1~3분</span>
+    </form>
+    {% endif %}
+  </div>
+  {% endmacro %}
+
+  {% macro upload_form(session_id, kind, open_) %}
+  <details {{ 'open' if open_ }}><summary>+ 기록 올리기</summary>
+  <form class="upform" method="post" action="/projects/{{ p.id }}/inputs" enctype="multipart/form-data">
+    <input type="hidden" name="session_id" value="{{ session_id or '' }}">
+    <div class="grid2"><div><label>종류</label><select name="kind">{% for k in INPUT_KINDS %}<option {{ 'selected' if k == kind }}>{{ k }}</option>{% endfor %}</select></div></div>
+    <label>메모 (미팅 내용, 조사한 내용, 멘티와 나눈 이야기 등)</label>
+    <textarea name="text" style="min-height:120px"></textarea>
+    <label>파일 첨부 — 사진, PDF, Word, Excel, 텍스트(녹음 변환본). 여러 개 가능, 끌어다 놓아도 됩니다</label>
+    <div class="drop"><input type="file" name="files" multiple><div class="muted small flist">선택된 파일 없음</div></div>
+    <p style="margin-bottom:0"><button class="btn primary">올리기</button> <span class="muted small">올린 뒤 'AI 정리'를 누르면 반영할 내용을 제안합니다 · {{ model }}</span></p>
+  </form></details>
+  {% endmacro %}
+
+  {% if err == 'empty' %}<div class="flash">메모를 쓰거나 파일을 하나 이상 첨부하세요.</div>{% endif %}
+  {% if err == 'busy' %}<div class="flash">녹음을 받아쓰는 중입니다. 끝난 뒤 AI 정리를 눌러 주세요.</div>{% endif %}
+  {% if not anthropic_ok %}<div class="flash small">이 PC에서 Claude Code(claude)를 찾지 못해 AI 정리를 쓸 수 없습니다. 업로드와 보관은 그대로 됩니다.</div>{% endif %}
+  <p class="muted small">회차마다 기록(메모·사진·문서·녹음 변환본)을 올립니다. 한 기록에 다른 회차 이야기가 섞여도 괜찮습니다 — 보고서를 만들 때 AI가 회차별로 나눠 씁니다.</p>
+
+  {% set done_count = sessions|selectattr('status', 'equalto', '완료')|list|length %}
+  {% for s in sessions %}{% set recs = inputs|selectattr('session_id', 'equalto', s.id)|list %}
+  <div class="card" id="s{{ s.id }}">
+    <div class="row between">
+      <h3 style="margin:0">{{ s.no }}회차 <span class="muted small">{% if s.date %}{{ s.date|d }} {{ s.start_time or '' }}{% if s.end_time %}~{{ s.end_time }}{% endif %} {{ s.place or '' }}{% else %}일정 미정{% endif %}{% if s.topic %} · {{ s.topic }}{% endif %}</span></h3>
+      <div class="row small"><span class="chip {{ 'green' if s.status == '완료' }}">{{ s.status }}</span>
+        {% if 'form3' in CHANNEL_FORMS.get(p.channel, []) %}<a class="btn small" href="/projects/{{ p.id }}/form3/{{ s.no }}">양식3</a>{% endif %}</div>
+    </div>
+    <details><summary>기본 정보 (일시·장소·방법·사진)</summary>
+    <form method="post" action="/sessions/{{ s.id }}/edit">
+      <div class="grid3">
+        <div><label>일자</label><input type="date" name="date" value="{{ s.date or '' }}"></div>
+        <div><label>시작 / 종료</label><div class="row"><input type="time" name="start_time" value="{{ s.start_time or '' }}" style="width:48%"><input type="time" name="end_time" value="{{ s.end_time or '' }}" style="width:48%"></div></div>
+        <div><label>장소</label><input type="text" name="place" value="{{ s.place or '' }}"></div>
+        <div><label>진행방법</label><select name="method">{% for m in ['오프라인','온라인'] %}<option {{ 'selected' if s.method == m }}>{{ m }}</option>{% endfor %}</select></div>
+        <div><label>상태</label><select name="status">{% for m in ['예정','완료'] %}<option {{ 'selected' if s.status == m }}>{{ m }}</option>{% endfor %}</select></div>
+        <div><label>주제</label><input type="text" name="topic" value="{{ s.topic or '' }}"></div>
+        <div><label>시작 사진</label><input type="text" name="photo1" value="{{ s.photo1 or '' }}" list="imgs" placeholder="올린 사진 파일명"></div>
+        <div><label>종료 사진</label><input type="text" name="photo2" value="{{ s.photo2 or '' }}" list="imgs" placeholder="올린 사진 파일명"></div>
+      </div>
+      <p><button class="btn primary small">저장</button></p>
+    </form></details>
+    {% if s.status_note or s.discussion or s.outputs or s.next_tasks %}
+    <details><summary>예전 방식으로 기록된 내용</summary><p class="pre small">{{ s.status_note or '' }}
+{{ s.discussion or '' }}
+{{ s.outputs or '' }}
+{{ s.next_tasks or '' }}</p></details>
+    {% endif %}
+    {{ digest_box(s.id, recs, '%d회차' % s.no) }}
+    <h4 style="margin:12px 0 4px">기록 {{ recs|length }}건</h4>
+    {% for i in recs %}{{ input_card(i) }}{% else %}<div class="muted small">아직 기록이 없습니다.</div>{% endfor %}
+    {{ upload_form(s.id, '미팅', s.status != '완료' and loop.index == done_count + 1) }}
+  </div>
+  {% endfor %}
+  <form method="post" action="/projects/{{ p.id }}/sessions/add" style="margin-bottom:14px"><button class="btn">+ 회차 추가</button></form>
+
+  {% set loose = inputs|rejectattr('session_id')|list %}
+  <div class="card" id="loose">
+    <h3>회차 밖 기록 <span class="muted small">자료조사, 멘티 제출물, 전화·카톡 등 특정 회차에 속하지 않는 것</span></h3>
+    {{ digest_box(0, loose, '회차 밖') }}
+    {% for i in loose %}{{ input_card(i) }}{% else %}<div class="muted small">없음</div>{% endfor %}
+    {{ upload_form(None, '자료조사', False) }}
+  </div>
+  <datalist id="imgs">{% for i in inputs %}{% for f in input_files.get(i.id, []) %}{% if f.media == 'image' %}<option value="{{ f.filename }}">{% endif %}{% endfor %}{% endfor %}</datalist>
+  <script>
+    document.querySelectorAll('form.upform').forEach(form => {
+      const fi = form.querySelector('input[type=file]'), fl = form.querySelector('.flist'), dz = form.querySelector('.drop');
+      const show = () => { fl.textContent = fi.files.length ? [...fi.files].map(f => `${f.name} (${(f.size/1048576).toFixed(1)}MB)`).join(', ') : '선택된 파일 없음'; };
+      fi.addEventListener('change', show);
+      ['dragover','dragenter'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('on'); }));
+      ['dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('on'); }));
+      dz.addEventListener('drop', ev => { fi.files = ev.dataTransfer.files; show(); });
+      form.addEventListener('submit', () => { const b = form.querySelector('button'); b.disabled = true; b.textContent = '올리는 중…'; });
+    });
+    document.querySelectorAll('form.digest').forEach(f => f.addEventListener('submit', () => { const b = f.querySelector('button'); b.disabled = true; b.textContent = 'AI 정리 중… (1~3분, 창을 닫지 마세요)'; }));
+  </script>
+
+{# ================= 미결 ================= #}
+{% elif tab == 'questions' %}
+  {% set open_q = questions|selectattr('status', 'equalto', '미결')|list %}
+  {% set closed_q = questions|selectattr('status', 'equalto', '결정')|list %}
+  <div class="card">
+    <h3>미결 {{ open_q|length }}건 <span class="muted small">— 임의로 정하지 않고 확인 후 결정합니다</span></h3>
+    {% for q in open_q %}
+      <div class="ck"><span class="chip {{ 'red' if q.priority == '긴급' else ('amber' if q.priority == '높음') }}">{{ q.code }} {{ q.priority }}</span>
+        <div class="t">{{ q.text }}<div class="muted small">확인: {{ q.owner or '-' }} · 기한 {{ q.due or '-' }}</div>
+          <details><summary>결정 기록</summary>
+            <form method="post" action="/questions/{{ q.id }}/decide" class="grid3">
+              <div><label>결정 내용</label><input type="text" name="decision" required></div>
+              <div><label>결정자</label><input type="text" name="decided_by" value="멘토"></div>
+              <div><label>근거</label><input type="text" name="basis"></div>
+              <p><button class="btn primary small">결정으로 닫기</button></p>
+            </form></details></div></div>
+    {% else %}<div class="empty">미결 사항이 없습니다.</div>{% endfor %}
+    <details><summary>미결 사항 추가</summary>
+      <form method="post" action="/projects/{{ p.id }}/questions" class="grid2">
+        <div><label>내용</label><input type="text" name="text" required></div>
+        <div><label>확인 주체</label><input type="text" name="owner"></div>
+        <div><label>기한</label><input type="text" name="due" placeholder="예: 11/20, 2회차"></div>
+        <div><label>우선순위</label><select name="priority">{% for x in PRIORITIES %}<option {{ 'selected' if x == '보통' }}>{{ x }}</option>{% endfor %}</select></div>
+        <p><button class="btn primary small">추가</button></p>
+      </form></details>
+  </div>
+  <div class="card">
+    <h3>결정 로그</h3>
+    <table><tr><th>일자</th><th>ID</th><th>항목 → 결정</th><th>결정자</th><th>근거</th><th></th></tr>
+    {% for q in closed_q %}<tr><td>{{ q.decided_at }}</td><td>{{ q.code }}</td><td>{{ q.text }}<br><b>→ {{ q.decision }}</b></td><td>{{ q.decided_by or '' }}</td><td class="small">{{ q.basis or '' }}</td>
+      <td><form class="inline" method="post" action="/questions/{{ q.id }}/reopen"><button class="btn link small">다시 열기</button></form></td></tr>
+    {% else %}<tr><td colspan="6" class="muted">아직 결정된 항목이 없습니다.</td></tr>{% endfor %}</table>
+  </div>
+
+{# ================= 보고서 ================= #}
+{% elif tab == 'reports' %}
+  {% set forms = CHANNEL_FORMS.get(p.channel, []) %}
+  {% if not forms %}
+  <div class="card" style="border-color:var(--amber)">
+    <h3>{{ p.channel or '의뢰 경로 미지정' }} — 보고 양식 미확인</h3>
+    <p class="small" style="margin:0">이 경로의 보고 양식과 규정은 아직 확인되지 않았습니다. 사업 가이드·양식을 admin 폴더에 넣어 주시면 그 항목에 맞춘 생성 기능을 추가합니다.
+      그 전까지 기록은 입력 탭에 계속 쌓아 두면 됩니다.{% if not p.channel %} 개요 → 정보 수정에서 의뢰 경로를 먼저 지정하세요.{% endif %}</p>
+  </div>
+  {% else %}
+  <p class="muted small">{{ p.channel }} 경로 양식 (모두의 창업 프로젝트). 입력 탭에 모인 모든 기록에서 AI가 회차별 내용을 뽑아 초안을 만듭니다. 초안은 피드백을 적어 다시 생성하거나 직접 고칠 수 있고, 모든 버전이 남습니다.</p>
+  <div class="card">
+    <h3>양식3 · 회차별 멘토링 보고서 <span class="muted small">멘토링 내용 1,000자 이상 · 사진 2장 · 오프라인 원칙</span></h3>
+    <table><tr><th>회차</th><th>일자</th><th>상태</th><th>초안</th><th></th></tr>
+    {% for s in sessions %}{% set r = report_latest.get((3, s.id)) %}
+      <tr><td>{{ s.no }}회차</td><td>{{ s.date|d if s.date else '미정' }}</td><td>{{ s.status }}</td>
+        <td class="small">{% if r %}v{{ r.version }} · {{ r.char_count }}자 · {{ r.origin }} · {{ r.created_at[5:16] }}{% else %}<span class="muted">없음</span>{% endif %}</td>
+        <td><a class="btn small {{ 'primary' if not r and s.status == '완료' }}" href="/projects/{{ p.id }}/form3/{{ s.no }}">{{ '열기' if r else '만들기' }}</a></td></tr>
+    {% endfor %}</table>
+  </div>
+  <div class="card">
+    {% set r4 = report_latest.get((4, None)) %}
+    <div class="row between"><h3>양식4 · 책임멘토 관찰 의견서 <span class="muted small">성실성·성장성·우수성 · 1페이지 이내</span></h3>
+      <a class="btn small" href="/projects/{{ p.id }}/form4">{{ '열기' if r4 else '만들기' }}</a></div>
+    <div class="small">{% if r4 %}v{{ r4.version }} · {{ r4.origin }} · {{ r4.created_at[5:16] }}{% else %}<span class="muted">아직 없음 — 모든 회차가 끝난 뒤 만드는 것을 권합니다</span>{% endif %}</div>
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

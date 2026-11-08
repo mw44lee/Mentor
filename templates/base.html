@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}멘토링 업무 관리{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if request.session.get('user') %}
+<div class="top"><div class="in">
+  <span class="brand">멘토링 업무 관리</span>
+  <nav>
+    <a href="/" class="{{ 'on' if request.url.path == '/' }}">현황</a>
+    <a href="/process" class="{{ 'on' if request.url.path.startswith('/process') }}">업무 프로세스</a>
+  </nav>
+  <form class="inline" method="post" action="/logout"><button class="btn small">로그아웃</button></form>
+</div></div>
+{% endif %}
+<div class="wrap">{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}{% block body %}{% endblock %}</div>
+</body>
+</html>
