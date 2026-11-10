@@ -61,7 +61,7 @@ def project_text(p) -> str:
 COMMON_RULES = """- 입력 원문에 있는 사실만 씁니다. 없는 사실·수치·평가를 지어내지 않습니다.
 - 입력이 부족하거나 어느 회차 일인지 애매한 내용은 쓰지 말고 'missing'에 "무엇이 부족한지/확인할 것"으로 적습니다.
 - 멘토 수당·정산, 멘티의 개인 연락처 등 보고서와 무관한 개인정보는 쓰지 않습니다.
-- 공식 보고서 문체(~함, ~하였음, ~임)로, 한국어로 씁니다. 마크다운 기호(#, *, -)는 쓰지 않고 문단은 빈 줄로 구분합니다.
+- 공식 보고서 문체(~함, ~하였음, ~임)로, 한국어로 씁니다. #, * 같은 마크다운 기호는 쓰지 않습니다.
 - 멘토의 피드백이 주어지면 그 피드백을 최우선으로 반영해 고쳐 씁니다."""
 
 # ---------------- 양식3 ----------------
@@ -76,8 +76,8 @@ FORM3_SYSTEM = f"""당신은 창업 멘토 {MENTOR_NAME}의 보고서 작성 보
 작성 규칙:
 - 지정된 회차 하나의 내용만 씁니다. 입력에는 여러 회차의 기록이 섞여 있을 수 있으니 날짜, 회차 언급, 멘토의 회차 지정을 근거로
   그 회차에 해당하는 내용만 골라냅니다. 다른 회차의 내용은 '이전 회차 과제 점검' 같은 맥락으로만 짧게 언급합니다.
-- 멘토링 내용은 공백 포함 {FORM3_MIN_CHARS}자 이상(목표 1,200~1,600자)으로, 다음 순서로 씁니다:
-  1) 진행 개요와 멘티 현황(지난 과제 결과 포함) 2) 주요 논의와 멘토 의견 3) 함께 도출한 결과물 4) 차기 과제와 다음 회차 계획
+- 멘토링 내용은 공백 포함 {FORM3_MIN_CHARS}자 이상(목표 1,100~1,500자). 형식: '■ 소제목' 줄로 카테고리를 나누고, 각 카테고리 아래는 '- '로 시작하는 간결한 글머리표로 씁니다. 카테고리: ■ 진행 개요 / ■ 멘티 현황 / ■ 주요 논의 및 멘토 의견 / ■ 결과물 / ■ 차기 과제 — 해당 사실이 없는 카테고리는 뺍니다. 카테고리 사이는 빈 줄 한 줄. 글머리표는 '~함/~임' 체의 짧은 문장.
+  (멘티 현황에는 지난 과제 결과 포함, 차기 과제에는 다음 회차 계획 포함)
 - 길이를 맞추려고 같은 말을 반복하거나 일반론을 늘어놓지 않습니다. 사실이 부족해 {FORM3_MIN_CHARS}자를 채울 수 없으면
   있는 사실만 쓰고 'missing'에 무엇을 더 기록하면 되는지 적습니다.
 - topic: 그 회차의 멘토링 주제를 한 줄(40자 이내)로.
@@ -209,6 +209,20 @@ def _doc():
     st.element.rPr.rFonts.set(qn("w:eastAsia"), "맑은 고딕")
     return d
 
+def _body(d, text):
+    from docx.shared import Pt
+    """'■ 소제목' → 굵은 소제목, '- 항목' → 글머리표, 그 밖의 줄 → 문단."""
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("■"):
+            par = d.add_paragraph(); par.add_run(line).bold = True; par.paragraph_format.space_before = Pt(6); par.paragraph_format.space_after = Pt(2)
+        elif line.startswith(("- ", "• ")):
+            d.add_paragraph(line[2:].strip(), style="List Bullet").paragraph_format.space_after = Pt(1)
+        else:
+            d.add_paragraph(line)
+
 def _table(d, rows):
     t = d.add_table(rows=0, cols=2); t.style = "Table Grid"
     for k, v in rows:
@@ -220,21 +234,25 @@ def form3_docx(p, header, topic, body, photos) -> bytes:
     d.add_heading("모두의 창업 프로젝트 2기 책임멘토 멘토링 보고서", level=1)
     _table(d, header + [("멘토링 주제", topic)])
     d.add_heading("멘토링 내용", level=2)
-    for para in (body or "").split("\n\n"):
-        d.add_paragraph(para.strip())
+    _body(d, body)
     d.add_heading("사진", level=2)
     # photos: [(파일명, 실제 경로 또는 None)] — 파일이 있으면 그림으로 넣는다
+    # 양식처럼 사진 칸 두 개를 나란히
     from docx.shared import Cm
+    photos = [x for x in photos if x and x[0]]
     placed = 0
-    for name, path in photos:
-        if not name:
-            continue
-        if path and path.exists():
-            try:
-                d.add_picture(str(path), width=Cm(8)); d.add_paragraph(name); placed += 1; continue
-            except Exception:
-                pass
-        d.add_paragraph(f"{name} [파일을 찾지 못함 — 직접 첨부]")
+    if photos:
+        t = d.add_table(rows=1, cols=2); t.style = "Table Grid"
+        for cell, (name, path) in zip(t.rows[0].cells, photos[:2]):
+            par = cell.paragraphs[0]
+            if path and path.exists():
+                try:
+                    par.add_run().add_picture(str(path), width=Cm(6.3)); placed += 1
+                except Exception:
+                    par.add_run("[사진을 넣지 못함 — 직접 첨부]")
+            else:
+                par.add_run("[파일을 찾지 못함 — 직접 첨부]")
+            cell.add_paragraph(name)
     if placed < 2:
         d.add_paragraph("[사진 2장 이상 첨부 필요]" if not placed else "[사진 1장 더 필요]")
     d.add_paragraph("위와 같이 모두의 창업 프로젝트 책임멘토 멘토링을 진행 하였음을 확인합니다.")
@@ -246,6 +264,5 @@ def form4_docx(p, header, body: dict) -> bytes:
     _table(d, header)
     for k, label in (("diligence", "성실성"), ("growth", "성장성"), ("excellence", "우수성")):
         d.add_heading(label, level=2)
-        for para in (body.get(k) or "").split("\n\n"):
-            d.add_paragraph(para.strip())
+        _body(d, body.get(k))
     buf = io.BytesIO(); d.save(buf); return buf.getvalue()
