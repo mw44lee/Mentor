@@ -741,7 +741,9 @@ def form3_page(request: Request, pid: int, no: int, v: int = 0):
         n_inputs = con.execute("SELECT COUNT(*) FROM inputs WHERE project_id=?", (pid,)).fetchone()[0]
     chan_warn = [] if "form3" in CHANNEL_FORMS.get(p["channel"], []) else [f"이 프로젝트의 의뢰 경로({p['channel'] or '미지정'})에 양식3이 맞는지 확인되지 않았습니다."]
     return render(request, "form3.html", p=p, s=s, cur=cur, meta=meta, versions=versions, header=header, n_inputs=n_inputs,
-                  warns=chan_warn + (rp.form3_checks(s, cur["body"]) if cur else rp.form3_checks(s, "")[1:]),  # 초안 전에는 글자 수 점검 생략 counts=rp.char_counts(cur["body"] if cur else ""),
+                  # 초안 전에는 글자 수 점검 생략
+                  warns=chan_warn + (rp.form3_checks(s, cur["body"]) if cur else rp.form3_checks(s, "")[1:]),
+                  counts=rp.char_counts(cur["body"] if cur else ""),
                   MIN=rp.FORM3_MIN_CHARS, anthropic_ok=ai.ai_ready())
 
 @app.post("/projects/{pid}/form3/{no}/generate")
@@ -787,7 +789,13 @@ def report_docx(rid: int):
         meta = json.loads(r["meta"] or "{}")
         if r["form"] == 3:
             s = con.execute("SELECT * FROM sessions WHERE id=?", (r["session_id"],)).fetchone()
-            data = rp.form3_docx(p, rp.form3_header(con, p, s), meta.get("topic", ""), r["body"], [s["photo1"], s["photo2"]])
+            def photo(name):
+                if not name:
+                    return (None, None)
+                f = con.execute("""SELECT f.stored_path FROM input_files f JOIN inputs i ON i.id=f.input_id
+                                   WHERE i.project_id=? AND f.filename=? ORDER BY f.id DESC""", (p["id"], name)).fetchone()
+                return (name, upload_path(f["stored_path"]) if f else None)
+            data = rp.form3_docx(p, rp.form3_header(con, p, s), meta.get("topic", ""), r["body"], [photo(s["photo1"]), photo(s["photo2"])])
             return _dl(data, f"양식3_{p['code']}_{s['no']}회차_v{r['version']}.docx")
         data = rp.form4_docx(p, rp.form4_header(con, p), json.loads(r["body"]))
         return _dl(data, f"양식4_관찰의견서_{p['code']}_v{r['version']}.docx")

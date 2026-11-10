@@ -223,7 +223,20 @@ def form3_docx(p, header, topic, body, photos) -> bytes:
     for para in (body or "").split("\n\n"):
         d.add_paragraph(para.strip())
     d.add_heading("사진", level=2)
-    d.add_paragraph(", ".join(x for x in photos if x) or "[사진 2장 첨부 필요]")
+    # photos: [(파일명, 실제 경로 또는 None)] — 파일이 있으면 그림으로 넣는다
+    from docx.shared import Cm
+    placed = 0
+    for name, path in photos:
+        if not name:
+            continue
+        if path and path.exists():
+            try:
+                d.add_picture(str(path), width=Cm(8)); d.add_paragraph(name); placed += 1; continue
+            except Exception:
+                pass
+        d.add_paragraph(f"{name} [파일을 찾지 못함 — 직접 첨부]")
+    if placed < 2:
+        d.add_paragraph("[사진 2장 이상 첨부 필요]" if not placed else "[사진 1장 더 필요]")
     d.add_paragraph("위와 같이 모두의 창업 프로젝트 책임멘토 멘토링을 진행 하였음을 확인합니다.")
     buf = io.BytesIO(); d.save(buf); return buf.getvalue()
 
