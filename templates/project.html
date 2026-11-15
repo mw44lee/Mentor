@@ -30,6 +30,7 @@
       <div><label>진출자 닉네임</label><input type="text" name="mentee_nickname" value="{{ p.mentee_nickname or '' }}"></div>
       <div><label>운영기관</label><input type="text" name="org" value="{{ p.org or '' }}"></div>
       <div><label>의뢰 경로</label><select name="channel"><option value="">미지정</option>{% for c in CHANNELS %}<option {{ 'selected' if p.channel == c }}>{{ c }}</option>{% endfor %}</select></div>
+      <div><label>권역 / 분야 <span class="muted small">(AI 활용지원 양식)</span></label><div class="row"><input type="text" name="region" value="{{ p.region or '' }}" placeholder="권역" style="width:45%"><input type="text" name="biz_field" value="{{ p.biz_field or '' }}" placeholder="분야" style="width:50%"></div></div>
       <div><label>Phase</label><select name="phase">{% for k, v in PHASES.items() %}<option value="{{ k }}" {{ 'selected' if p.phase == k }}>{{ k }}. {{ v }}</option>{% endfor %}</select></div>
       <div><label>상태</label><select name="status">{% for s in PROJECT_STATUSES %}<option {{ 'selected' if p.status == s }}>{{ s }}</option>{% endfor %}</select></div>
       <div><label>예정 회차 / 총 시간</label><div class="row"><input type="number" name="planned_sessions" value="{{ p.planned_sessions }}" style="width:80px"><input type="number" step="0.5" name="planned_hours" value="{{ p.planned_hours }}" style="width:90px"></div>
@@ -49,7 +50,9 @@
     {% if p.item %}<h3>핵심 아이템</h3><p class="pre" style="margin-top:0">{{ p.item }}</p>{% endif %}
     {% if p.critical_question %}<h3>핵심 질문</h3><p class="pre" style="margin-top:0">{{ p.critical_question }}</p>{% endif %}
     <div class="grid3 small muted">
-      <div>운영기관: {{ p.org or '미확인' }}</div><div>진출자 닉네임: {{ p.mentee_nickname or '미확인' }}</div>
+      <div>운영기관: {{ p.org or '미확인' }}</div>
+      {% if FORM_STYLE.get(p.channel) == 'ai' %}<div>권역: {{ p.region or '미확인' }} · 분야: {{ p.biz_field or '미확인' }}</div>
+      {% else %}<div>진출자 닉네임: {{ p.mentee_nickname or '미확인' }}</div>{% endif %}
       <div>계획: {{ p.planned_sessions }}회 · {{ '%g' % p.planned_hours }}시간{% if not p.plan_confirmed %} <span class="chip amber">미확인</span>{% endif %}</div>
     </div>
     {% if p.notes %}<h3 style="margin-top:12px">멘토 메모</h3><p class="pre small" style="margin-top:0">{{ p.notes }}</p>{% endif %}
@@ -308,9 +311,14 @@
       그 전까지 기록은 입력 탭에 계속 쌓아 두면 됩니다.{% if not p.channel %} 개요 → 정보 수정에서 의뢰 경로를 먼저 지정하세요.{% endif %}</p>
   </div>
   {% else %}
-  <p class="muted small">{{ p.channel }} 경로 양식 (모두의 창업 프로젝트). 입력 탭에 모인 모든 기록에서 AI가 회차별 내용을 뽑아 초안을 만듭니다. 초안은 피드백을 적어 다시 생성하거나 직접 고칠 수 있고, 모든 버전이 남습니다.</p>
+  {% set ai_style = FORM_STYLE.get(p.channel) == 'ai' %}
+  <p class="muted small">{{ p.channel }} 경로 양식{{ ' (STEP 2)' if ai_style else ' (모두의 창업 프로젝트)' }}. 회차·기록 탭에 모인 모든 기록에서 AI가 회차별 내용을 뽑아 초안을 만듭니다. 초안은 피드백을 적어 다시 생성하거나 직접 고칠 수 있고, 모든 버전이 남습니다.{% if ai_style %} 제출: PLAB-ON 업로드.{% endif %}</p>
   <div class="card">
+    {% if ai_style %}
+    <h3>양식3 · 멘토링 수행일지 <span class="muted small">주요 멘토링 내용 1,000자 이상 · 주요 산출물 · 금지행위 체크(직접) · 증빙 사진</span></h3>
+    {% else %}
     <h3>양식3 · 회차별 멘토링 보고서 <span class="muted small">멘토링 내용 1,000자 이상 · 사진 2장 · 오프라인 원칙</span></h3>
+    {% endif %}
     <table><tr><th>회차</th><th>일자</th><th>상태</th><th>초안</th><th></th></tr>
     {% for s in sessions %}{% set r = report_latest.get((3, s.id)) %}
       <tr><td>{{ s.no }}회차</td><td>{{ s.date|d if s.date else '미정' }}</td><td>{{ s.status }}</td>
@@ -320,7 +328,7 @@
   </div>
   <div class="card">
     {% set r4 = report_latest.get((4, None)) %}
-    <div class="row between"><h3>양식4 · 책임멘토 관찰 의견서 <span class="muted small">성실성·성장성·우수성 · 1페이지 이내</span></h3>
+    <div class="row between"><h3>{% if ai_style %}양식4 · 멘토링 결과보고서 <span class="muted small">추진내용 및 성과 · 산출물 및 활용 결과</span>{% else %}양식4 · 책임멘토 관찰 의견서 <span class="muted small">성실성·성장성·우수성 · 1페이지 이내</span>{% endif %}</h3>
       <a class="btn small" href="/projects/{{ p.id }}/form4">{{ '열기' if r4 else '만들기' }}</a></div>
     <div class="small">{% if r4 %}v{{ r4.version }} · {{ r4.origin }} · {{ r4.created_at[5:16] }}{% else %}<span class="muted">아직 없음 — 모든 회차가 끝난 뒤 만드는 것을 권합니다</span>{% endif %}</div>
   </div>

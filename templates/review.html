@@ -11,7 +11,9 @@
 <div class="card">
   <div class="row between"><h3 style="margin:0">보고서 초안 {% if report %}<span class="muted small">양식3 v{{ report.version }} · {{ report.char_count }}자로 저장됨</span>{% endif %}</h3>
     {% if report %}<a class="btn small primary" href="/projects/{{ p.id }}/form3/{{ s.no }}?v={{ report.id }}">양식3에서 보기·수정</a>{% endif %}</div>
-  {% if r.report.topic %}<p class="small" style="margin:6px 0 0"><b>주제</b> {{ r.report.topic }}</p>{% endif %}
+  {% if r.report.topic and FORM_STYLE.get(p.channel) != 'ai' %}<p class="small" style="margin:6px 0 0"><b>주제</b> {{ r.report.topic }}</p>{% endif %}
+  {% if r.report.outputs %}<p class="small pre" style="margin:6px 0 0"><b>주요 산출물</b>
+{{ r.report.outputs }}</p>{% endif %}
   <details {{ 'open' if not report }}><summary>{{ '정리된 내용 보기' if report else '보고서용 정리 내용' }}</summary><p class="pre small">{{ r.report.content }}</p></details>
   {% if r.report.missing %}<div class="small" style="margin-top:6px"><b>보고서에 부족한 것</b><ul style="margin:4px 0 0">{% for m in r.report.missing %}<li>{{ m }}</li>{% endfor %}</ul></div>{% endif %}
   {% if not report and s %}<p class="muted small" style="margin-bottom:0">이 경로는 보고 양식이 확인되지 않아 정리 내용만 저장했습니다. 양식이 정해지면 이 내용으로 보고서를 만듭니다.</p>{% endif %}

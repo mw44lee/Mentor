@@ -3,19 +3,25 @@
 {% block title %}양식3 {{ s.no }}회차 · {{ p.code }}{% endblock %}
 {% block body %}
 <div class="muted small"><a href="/">현황</a> / <a href="/projects/{{ p.id }}?tab=reports">{{ p.code }} 보고서</a> / 양식3 {{ s.no }}회차</div>
-<h1>양식3 · {{ s.no }}회차 멘토링 보고서</h1>
+<h1>{{ info.form3_title }} · {{ s.no }}회차</h1>
 <p class="muted small">입력 {{ n_inputs }}건 전체에서 {{ s.no }}회차 내용을 뽑아 씁니다. 머리 항목은 프로젝트·회차 탭의 값으로 채워지며, 비어 있으면 거기서 고치세요.</p>
 
-<div class="card">{{ header_table(header + [('멘토링 주제', meta.get('topic'))]) }}
+<div class="card">{{ header_table(header if style == 'ai' else header + [('멘토링 주제', meta.get('topic'))]) }}
   <p class="small muted" style="margin-bottom:0">사진: {{ s.photo1 or '시작 사진 없음' }} / {{ s.photo2 or '종료 사진 없음' }} — <a href="/projects/{{ p.id }}?tab=sessions#s{{ s.id }}">회차 탭에서 지정</a></p></div>
 
 {% if cur %}
 {{ warn_box(warns, meta.get('missing')) }}
 <form class="card" method="post" action="/reports/{{ cur.id }}/save">
-  <div class="row between"><h3>멘토링 내용 <span class="muted small">v{{ cur.version }} · {{ cur.origin }}</span></h3>
+  <div class="row between"><h3>{{ '1. 주요 멘토링 내용' if style == 'ai' else '멘토링 내용' }} <span class="muted small">v{{ cur.version }} · {{ cur.origin }}</span></h3>
     <span class="small"><b id="cnt" class="{{ 'd-urgent' if counts[0] < MIN }}">{{ counts[0] }}</b>자 (공백 제외 <span id="cnt2">{{ counts[1] }}</span>자) / 최소 {{ MIN }}자</span></div>
+  {% if style == 'ai' %}
+  <label>1. 주요 멘토링 내용</label><textarea name="body" id="body" style="min-height:420px">{{ cur.body }}</textarea>
+  <label>2. 주요 산출물</label><textarea name="outputs" id="outputs" style="min-height:110px">{{ meta.get('outputs', '') }}</textarea>
+  <p class="small muted">3. 금지행위 확인 체크리스트(제척·이해충돌·정보보호)는 docx에 빈 칸으로 들어갑니다. 직접 확인해 표시하세요.</p>
+  {% else %}
   <label>멘토링 주제</label><input type="text" name="topic" value="{{ meta.get('topic', '') }}">
   <label>멘토링 내용</label><textarea name="body" id="body" style="min-height:420px">{{ cur.body }}</textarea>
+  {% endif %}
   <div class="row" style="margin-top:10px">
     <button class="btn">수정 저장 (새 버전)</button>
     <button type="button" class="btn" id="copy">내용 복사</button>
@@ -25,12 +31,15 @@
 <script>
   const b = document.getElementById('body'), c = document.getElementById('cnt'), c2 = document.getElementById('cnt2');
   b.addEventListener('input', () => { c.textContent = b.value.length; c2.textContent = b.value.replace(/\s/g, '').length; c.className = b.value.length < {{ MIN }} ? 'd-urgent' : ''; });
-  document.getElementById('copy').addEventListener('click', async () => { await navigator.clipboard.writeText(b.value); document.getElementById('copy').textContent = '복사됨'; });
+  document.getElementById('copy').addEventListener('click', async () => {
+    const o = document.getElementById('outputs');
+    await navigator.clipboard.writeText(o ? `1. 주요 멘토링 내용\n${b.value}\n\n2. 주요 산출물\n${o.value}` : b.value);
+    document.getElementById('copy').textContent = '복사됨'; });
 </script>
 {% else %}
 {{ warn_box(warns, []) }}
 {% endif %}
 
-{{ gen_box('/projects/%d/form3/%d/generate' % (p.id, s.no), cur, anthropic_ok, '피드백 반영해 다시 생성' if cur else '양식3 초안 생성') }}
+{{ gen_box('/projects/%d/form3/%d/generate' % (p.id, s.no), cur, anthropic_ok, '피드백 반영해 다시 생성' if cur else ('수행일지 초안 생성' if style == 'ai' else '양식3 초안 생성')) }}
 {{ versions_list(versions, cur, '/projects/%d/form3/%d' % (p.id, s.no)) }}
 {% endblock %}

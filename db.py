@@ -88,6 +88,8 @@ MIGRATIONS = [  # 기존 DB에 나중에 추가된 열 (이미 있으면 건너�
     "ALTER TABLE reports ADD COLUMN origin TEXT",
     "ALTER TABLE reports ADD COLUMN meta TEXT",
     "ALTER TABLE projects ADD COLUMN channel TEXT",
+    "ALTER TABLE projects ADD COLUMN region TEXT",     # 권역 (AI 활용지원 양식)
+    "ALTER TABLE projects ADD COLUMN biz_field TEXT",  # 분야 (AI 활용지원 양식)
 ]
 
 def init_db():

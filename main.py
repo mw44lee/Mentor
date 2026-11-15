@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 import auth
-from config import APP_DIR, PHASES, PROJECT_STATUSES, INPUT_KINDS, PRIORITIES, HOST, PORT, CHANNELS, CHANNEL_FORMS
+from config import APP_DIR, PHASES, PROJECT_STATUSES, INPUT_KINDS, PRIORITIES, HOST, PORT, CHANNELS, CHANNEL_FORMS, FORM_STYLE
 from db import get_db, init_db
 
 init_db()
@@ -28,7 +28,7 @@ def fmt_date(s):
 tpl.env.filters["d"] = fmt_date
 tpl.env.filters["fromjson"] = lambda s: json.loads(s) if s else []
 tpl.env.globals.update(PHASES=PHASES, PROJECT_STATUSES=PROJECT_STATUSES, INPUT_KINDS=INPUT_KINDS, PRIORITIES=PRIORITIES,
-                       CHANNELS=CHANNELS, CHANNEL_FORMS=CHANNEL_FORMS)
+                       CHANNELS=CHANNELS, CHANNEL_FORMS=CHANNEL_FORMS, FORM_STYLE=FORM_STYLE)
 
 PUBLIC = ("/login", "/static")
 
@@ -312,9 +312,10 @@ def project_update(pid: int, brand: str = Form(""), service: str = Form(""), men
                    goal: str = Form(""), item: str = Form(""), critical_question: str = Form(""), org: str = Form(""),
                    phase: int = Form(1), status: str = Form("진행 중"), planned_sessions: int = Form(3), planned_hours: float = Form(6),
                    start_date: str = Form(""), end_date: str = Form(""), notes: str = Form(""), plan_confirmed: str = Form(""),
-                   channel: str = Form("")):
+                   channel: str = Form(""), region: str = Form(""), biz_field: str = Form("")):
     with get_db() as con:
         load_project(con, pid)
+        con.execute("UPDATE projects SET region=?, biz_field=? WHERE id=?", (blank(region), blank(biz_field), pid))
         con.execute("""UPDATE projects SET brand=?,service=?,mentee=?,mentee_nickname=?,goal=?,item=?,critical_question=?,org=?,
                        phase=?,status=?,planned_sessions=?,planned_hours=?,start_date=?,end_date=?,notes=?,plan_confirmed=?,channel=?,
                        completed_at=CASE WHEN ?='완료' THEN COALESCE(completed_at, datetime('now','localtime')) ELSE NULL END WHERE id=?""",
@@ -578,7 +579,8 @@ def group_digest(request: Request, pid: int, sid: int, feedback: str = Form(""))
     if any(i["state"] == "받아쓰는 중" for i in inputs):
         return back(f"/projects/{pid}?tab=sessions&err=busy#{anchor}")
     forms = CHANNEL_FORMS.get(p["channel"], [])
-    rules = ("form3" if "form3" in forms else "session") if session_id else "loose"
+    form3_rules = "ai_form3" if FORM_STYLE.get(p["channel"]) == "ai" else "form3"
+    rules = (form3_rules if "form3" in forms else "session") if session_id else "loose"
     try:
         r = ai.digest_session(pid, session_id, blank(feedback), rules)
     except ai.AIError as e:
@@ -589,9 +591,14 @@ def group_digest(request: Request, pid: int, sid: int, feedback: str = Form(""))
         did = con.execute("INSERT INTO session_digests(project_id,session_id,input_ids,result,feedback) VALUES(?,?,?,?,?)",
                           (pid, session_id, json.dumps([i["id"] for i in inputs]), json.dumps(r, ensure_ascii=False), blank(feedback))).lastrowid
         con.execute(f"UPDATE inputs SET state='정리됨' WHERE id IN ({','.join('?' * len(inputs))}) AND state!='반영됨'", [i["id"] for i in inputs])
-        if rules == "form3":   # 모두의창업 로컬트랙: 정리 결과를 양식3 초안 새 버전으로
+        if rules in ("form3", "ai_form3"):   # 양식이 확인된 경로: 정리 결과를 양식3 초안 새 버전으로
             rep = r["report"]
-            rid = _save_report(con, pid, 3, session_id, rep["content"], {"topic": rep["topic"], "missing": rep["missing"], "digest_id": did},
+            meta = {"missing": rep["missing"], "digest_id": did}
+            if rules == "form3":
+                meta["topic"] = rep["topic"]
+            else:
+                meta["outputs"] = rep.get("outputs", "")
+            rid = _save_report(con, pid, 3, session_id, rep["content"], meta,
                                feedback, "AI 재정리" if again else "AI 정리")
             con.execute("UPDATE session_digests SET report_id=? WHERE id=?", (rid, did))
     return back(f"/digests/{did}/review")
@@ -742,22 +749,29 @@ def form3_page(request: Request, pid: int, no: int, v: int = 0):
     chan_warn = [] if "form3" in CHANNEL_FORMS.get(p["channel"], []) else [f"이 프로젝트의 의뢰 경로({p['channel'] or '미지정'})에 양식3이 맞는지 확인되지 않았습니다."]
     return render(request, "form3.html", p=p, s=s, cur=cur, meta=meta, versions=versions, header=header, n_inputs=n_inputs,
                   # 초안 전에는 글자 수 점검 생략
-                  warns=chan_warn + (rp.form3_checks(s, cur["body"]) if cur else rp.form3_checks(s, "")[1:]),
-                  counts=rp.char_counts(cur["body"] if cur else ""),
+                  warns=chan_warn + (rp.form3_checks(p, s, cur["body"]) if cur else rp.form3_checks(p, s, "")[1:]),
+                  counts=rp.char_counts(cur["body"] if cur else ""), style=rp.style(p), info=rp.info(p),
                   MIN=rp.FORM3_MIN_CHARS, anthropic_ok=ai.ai_ready())
 
 @app.post("/projects/{pid}/form3/{no}/generate")
 def form3_generate(request: Request, pid: int, no: int, feedback: str = Form(""), base_id: str = Form("")):
     with get_db() as con:
+        p = load_project(con, pid)
         s = con.execute("SELECT * FROM sessions WHERE project_id=? AND no=?", (pid, no)).fetchone()
-        prev = con.execute("SELECT body FROM reports WHERE id=?", (int(base_id),)).fetchone() if base_id else None
+        prev = con.execute("SELECT body, meta FROM reports WHERE id=?", (int(base_id),)).fetchone() if base_id else None
+    previous = None
+    if prev and feedback.strip():
+        previous = prev["body"]
+        outs = json.loads(prev["meta"] or "{}").get("outputs")
+        if outs:
+            previous += f"\n\n[주요 산출물]\n{outs}"
     try:
-        r = rp.generate_form3(pid, no, blank(feedback), prev["body"] if prev and feedback.strip() else None)
+        r = rp.generate_form3(p, no, blank(feedback), previous)
     except ai.AIError as e:
         request.session["flash"] = str(e)
         return back(f"/projects/{pid}/form3/{no}")
     with get_db() as con:
-        rid = _save_report(con, pid, 3, s["id"], r["content"], {"topic": r["topic"], "missing": r["missing"]}, feedback,
+        rid = _save_report(con, pid, 3, s["id"], r["content"], rp.form3_meta(r), feedback,
                            "AI 재생성(피드백)" if feedback.strip() else "AI 생성")
     return back(f"/projects/{pid}/form3/{no}?v={rid}")
 
@@ -769,11 +783,15 @@ async def report_save(request: Request, rid: int):
         if not old:
             raise HTTPException(404)
         meta = json.loads(old["meta"] or "{}")
+        p = load_project(con, old["project_id"])
+        clean = lambda k: (form.get(k) or "").replace("\r\n", "\n").strip()
         if old["form"] == 3:
-            meta["topic"] = (form.get("topic") or "").strip()
-            body = (form.get("body") or "").replace("\r\n", "\n").strip()
+            for k in ("topic", "outputs"):   # 로컬트랙: 멘토링 주제 / AI 활용지원: 주요 산출물
+                if k in form:
+                    meta[k] = clean(k)
+            body = clean("body")
         else:
-            body = {k: (form.get(k) or "").replace("\r\n", "\n").strip() for k in ("diligence", "growth", "excellence")}
+            body = {k: clean(k) for k, _, _ in rp.info(p)["form4_keys"]}
         new = _save_report(con, old["project_id"], old["form"], old["session_id"], body, meta, None, "직접 수정")
         no = con.execute("SELECT no FROM sessions WHERE id=?", (old["session_id"],)).fetchone() if old["session_id"] else None
     request.session["flash"] = "수정본을 새 버전으로 저장했습니다."
@@ -795,10 +813,12 @@ def report_docx(rid: int):
                 f = con.execute("""SELECT f.stored_path FROM input_files f JOIN inputs i ON i.id=f.input_id
                                    WHERE i.project_id=? AND f.filename=? ORDER BY f.id DESC""", (p["id"], name)).fetchone()
                 return (name, upload_path(f["stored_path"]) if f else None)
-            data = rp.form3_docx(p, rp.form3_header(con, p, s), meta.get("topic", ""), r["body"], [photo(s["photo1"]), photo(s["photo2"])])
-            return _dl(data, f"양식3_{p['code']}_{s['no']}회차_v{r['version']}.docx")
+            data = rp.form3_docx(p, rp.form3_header(con, p, s), meta, r["body"], [photo(s["photo1"]), photo(s["photo2"])])
+            name3 = "수행일지" if rp.style(p) == "ai" else "회차보고서"
+            return _dl(data, f"양식3_{name3}_{p['code']}_{s['no']}회차_v{r['version']}.docx")
         data = rp.form4_docx(p, rp.form4_header(con, p), json.loads(r["body"]))
-        return _dl(data, f"양식4_관찰의견서_{p['code']}_v{r['version']}.docx")
+        name4 = "결과보고서" if rp.style(p) == "ai" else "관찰의견서"
+        return _dl(data, f"양식4_{name4}_{p['code']}_v{r['version']}.docx")
 
 @app.get("/projects/{pid}/form4", response_class=HTMLResponse)
 def form4_page(request: Request, pid: int, v: int = 0):
@@ -811,21 +831,23 @@ def form4_page(request: Request, pid: int, v: int = 0):
         header = rp.form4_header(con, p)
         warns = ([] if "form4" in CHANNEL_FORMS.get(p["channel"], []) else [f"이 프로젝트의 의뢰 경로({p['channel'] or '미지정'})에 양식4가 맞는지 확인되지 않았습니다."]) \
             + (rp.form4_checks(con, p, body) if cur else [])
-    total = sum(rp.char_counts(body.get(k, ""))[0] for k in ("diligence", "growth", "excellence"))
+    info = rp.info(p)
+    total = sum(rp.char_counts(body.get(k, ""))[0] for k, _, _ in info["form4_keys"])
     return render(request, "form4.html", p=p, cur=cur, body=body, meta=meta, versions=versions, header=header, warns=warns,
-                  total=total, MAX=rp.FORM4_MAX_CHARS, anthropic_ok=ai.ai_ready())
+                  total=total, MAX=info["form4_max"], info=info, style=rp.style(p), anthropic_ok=ai.ai_ready())
 
 @app.post("/projects/{pid}/form4/generate")
 def form4_generate(request: Request, pid: int, feedback: str = Form(""), base_id: str = Form("")):
     with get_db() as con:
+        p = load_project(con, pid)
         prev = con.execute("SELECT body FROM reports WHERE id=?", (int(base_id),)).fetchone() if base_id else None
     try:
-        r = rp.generate_form4(pid, blank(feedback), json.loads(prev["body"]) if prev and feedback.strip() else None)
+        r = rp.generate_form4(p, blank(feedback), json.loads(prev["body"]) if prev and feedback.strip() else None)
     except ai.AIError as e:
         request.session["flash"] = str(e)
         return back(f"/projects/{pid}/form4")
     with get_db() as con:
-        rid = _save_report(con, pid, 4, None, {k: r[k] for k in ("diligence", "growth", "excellence")}, {"missing": r["missing"]},
+        rid = _save_report(con, pid, 4, None, {k: r[k] for k, _, _ in rp.info(p)["form4_keys"]}, {"missing": r["missing"]},
                            feedback, "AI 재생성(피드백)" if feedback.strip() else "AI 생성")
     return back(f"/projects/{pid}/form4?v={rid}")
 
