@@ -589,7 +589,7 @@ def group_digest(request: Request, pid: int, sid: int, feedback: str = Form(""))
         did = con.execute("INSERT INTO session_digests(project_id,session_id,input_ids,result,feedback) VALUES(?,?,?,?,?)",
                           (pid, session_id, json.dumps([i["id"] for i in inputs]), json.dumps(r, ensure_ascii=False), blank(feedback))).lastrowid
         con.execute(f"UPDATE inputs SET state='정리됨' WHERE id IN ({','.join('?' * len(inputs))}) AND state!='반영됨'", [i["id"] for i in inputs])
-        if rules == "form3":   # PLAB: 정리 결과를 양식3 초안 새 버전으로
+        if rules == "form3":   # 모두의창업 로컬트랙: 정리 결과를 양식3 초안 새 버전으로
             rep = r["report"]
             rid = _save_report(con, pid, 3, session_id, rep["content"], {"topic": rep["topic"], "missing": rep["missing"], "digest_id": did},
                                feedback, "AI 재정리" if again else "AI 정리")
