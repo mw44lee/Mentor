@@ -213,7 +213,14 @@ def _doc():
     d = docx.Document()
     st = d.styles["Normal"]; st.font.name = "맑은 고딕"; st.font.size = Pt(10.5)
     from docx.oxml.ns import qn
+    from docx.shared import Cm
     st.element.rPr.rFonts.set(qn("w:eastAsia"), "맑은 고딕")
+    st.paragraph_format.line_spacing = 1.15
+    st.paragraph_format.space_after = Pt(3)
+    for sec in d.sections:   # 공식 양식은 A4 — 기본값(Letter, 2.54cm 여백)이면 1페이지 기준을 넘기 쉽다
+        sec.page_width, sec.page_height = Cm(21), Cm(29.7)
+        sec.left_margin = sec.right_margin = Cm(2)
+        sec.top_margin = sec.bottom_margin = Cm(1.8)
     return d
 
 def _body(d, text):
